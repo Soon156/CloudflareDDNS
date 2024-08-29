@@ -1,4 +1,5 @@
 import json
+import sys
 import tkinter as tk
 import logging
 from tkinter import messagebox
@@ -69,7 +70,7 @@ class Config:
         try:
             with open(self.config_file, 'r') as file:
                 self.config = json.load(file)
-        except FileNotFoundError:
+        except Exception as e:
             logging.info("Configuration file not found.")
             self.get_user_input()
             return
@@ -98,7 +99,7 @@ class Config:
 
         for key, prompt in prompts.items():
             if self.halt:
-                exit()
+                sys.exit()
             self.custom_dialog(prompt, key)
         self.update_from_user_data()
         save_to_file(self.user_data)

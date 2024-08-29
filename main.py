@@ -1,3 +1,4 @@
+import ctypes
 import os
 import sys
 import threading
@@ -6,6 +7,8 @@ import requests
 import re
 import logging
 import time
+
+import config as cf
 from config import Config
 from notifypy import Notify
 from PIL import Image
@@ -14,6 +17,8 @@ from datetime import datetime
 
 # App Name
 app_name = "Cloudflare DDNS"
+key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
+exe_path = os.path.abspath(__file__)
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, filename='ddns_updater.log', format='%(asctime)s - %(levelname)s - %(message)s')
@@ -49,13 +54,14 @@ class DDNSUpdater:
         self.lastUpdate = datetime.now()
         self.config = None
         self.exit = False
-        self.refresh_config()
         self.icon = None
 
         # Start the tray icon in a separate thread
         tray_thread = threading.Thread(target=self.system_tray)
         tray_thread.daemon = True  # Allows the thread to exit when the main program exits
         tray_thread.start()
+
+        self.refresh_config()
 
     def system_tray(self):
         image = Image.open("cloudflare-icon.png")
@@ -74,44 +80,37 @@ class DDNSUpdater:
             self.icon.stop()
             self.exit = True
 
-    def check_startup_entry_exists(self):
+    def check_startup_entry_exists(self, option=False):
+        self.check_admin()
         try:
-            # Open the registry key for user-specific startup programs
-            reg_key = winreg.OpenKey(
-                winreg.HKEY_CURRENT_USER,
-                r"Software\Microsoft\Windows\CurrentVersion\Run",
-                0,
-                winreg.KEY_SET_VALUE  # Use KEY_SET_VALUE to modify the registry
-            )
-
-            try:
-                # Try to read the registry value
-                winreg.QueryValueEx(reg_key, app_name)
-                # If no exception is raised, the value exists
-                exists = True
-            except FileNotFoundError:
-                # If the file is not found, the value does not exist
-                exists = False
-
-            if exists:
-                winreg.DeleteValue(reg_key, app_name)
-                self.send_message("Startup launch enable", False, True)
-            else:
-                # Determine the path to the executable or script
-                executable_path = sys.executable if getattr(sys, 'frozen', False) else os.path.abspath(__file__)
-                # Add or update the registry value
-                winreg.SetValueEx(reg_key, app_name, 0, winreg.REG_SZ, executable_path)
-                self.send_message("Startup launch disable", False, True)
-
-            winreg.CloseKey(reg_key)
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_WRITE) as key:
+                if self.config.start and not option:
+                    winreg.DeleteValue(key, app_name)
+                    self.config.config["start"] = False
+                    self.send_message("Startup Disable", False, True)
+                else:
+                    winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, exe_path)
+                    self.config.config["start"] = True
+                    self.send_message("Startup Enabled!", False, True)
+                cf.save_to_file(self.config.config)
+        except FileNotFoundError:
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path) as key:
+                winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, exe_path)
+                cf.save_to_file(self.config.config)
+                self.send_message("Startup Enabled!", False, True)
         except Exception as e:
             if 'Access is denied' in str(e):
-                self.send_message("Try again after run as admin!", True)
+                self.send_message("Please run the application as admin!", True)
+                time.sleep(3)
+                ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, " ".join(sys.argv), None, 1)
+                self.exit = True
                 return
             self.send_message(str(e), True)
 
     def refresh_config(self):
         self.config = Config()
+        if self.config.start:
+            self.check_startup_entry_exists(True)
 
     def get_dns_record(self):
         headers = {
@@ -151,15 +150,19 @@ class DDNSUpdater:
     def send_message(self, msg, error=False, notification=False):
         print(msg)
         notify.message = str(msg)
-        notify_thread = threading.Thread(target=notify.send(block=False))
+        notify_thread = threading.Thread(target=lambda: notify.send(block=False))
+
         if error:
+            logging.error(msg)
             if not self.config.silent:
                 notify_thread.start()
-                logging.error(msg)
+        elif notification:
+            logging.info(msg)
+            notify_thread.start()
         else:
-            if not self.config.silent and not self.config.message or notification:
+            logging.info(msg)
+            if self.config.message:
                 notify_thread.start()
-                logging.info(msg)
 
     def check_time(self):
         time.sleep(1)
@@ -170,6 +173,20 @@ class DDNSUpdater:
             return True
         else:
             return False
+
+    def check_admin(self):
+        try:
+            is_admin = ctypes.windll.shell32.IsUserAnAdmin()
+        except AttributeError:
+            is_admin = False
+
+        if not is_admin:
+            # Run the script with admin privileges
+            ctypes.windll.shell32.ShellExecuteW(
+                None, "runas", sys.executable, " ".join(sys.argv), None, 1
+            )
+            self.exit = True
+            sys.exit()
 
     def run(self):
         self.main()
