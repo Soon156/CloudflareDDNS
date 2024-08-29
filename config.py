@@ -44,6 +44,7 @@ class Config:
         self.dialog = None
         self.user_data = {}
         self.config = {}
+        self.halt = False
         self.load_config()
 
         for key in self.required_fields:
@@ -73,7 +74,7 @@ class Config:
             self.get_user_input()
             return
 
-            # Set class variables with values from the config file or default values
+        # Set class variables with values from the config file or default values
         for key, default_value in defaults.items():
             value = self.config.get(key, default_value)
             if value == "" or value is None:
@@ -96,6 +97,8 @@ class Config:
         root.withdraw()  # Hide the root window
 
         for key, prompt in prompts.items():
+            if self.halt:
+                exit()
             self.custom_dialog(prompt, key)
         self.update_from_user_data()
         save_to_file(self.user_data)
@@ -104,7 +107,9 @@ class Config:
     def custom_dialog(self, prompt, key):
         """Create a custom dialog to ask for user input."""
         self.dialog = tk.Toplevel()
+        self.dialog.protocol("WM_DELETE_WINDOW", self.on_close)
         self.dialog.title("Cloudflare DDNS")
+        self.dialog.resizable(False, False)
 
         try:
             self.dialog.iconphoto(True, tk.PhotoImage(file="cloudflare-icon.png"))
@@ -118,7 +123,7 @@ class Config:
         entry.pack(padx=10, pady=10)
 
         # Add an OK button
-        ok_button = tk.Button(self.dialog, text="OK", command=lambda: self.check_value(entry, key))
+        ok_button = tk.Button(self.dialog, text="OK", command=lambda: self.check_value(entry.get(), key))
         ok_button.pack(pady=10)
 
         # Center the dialog on the screen
@@ -129,13 +134,16 @@ class Config:
         x = (screen_width // 2) - (width // 2)
         y = (screen_height // 2) - (height // 2)
         self.dialog.geometry(f"{width}x{height}+{x}+{y}")
-
         self.dialog.wait_window()  # Wait for the dialog to close
 
-    def check_value(self, entry, key):
-        value = entry.get()
+    def check_value(self, value, key):
         if not value and key in self.required_fields:
             messagebox.showwarning("Missing Fields", "This field is required!")
         else:
             self.user_data[key] = value
+            self.dialog.destroy()
+
+    def on_close(self):
+        if messagebox.askokcancel("Quit", "Do you really want to quit?"):
+            self.halt = True
             self.dialog.destroy()
