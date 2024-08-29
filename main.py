@@ -18,7 +18,6 @@ from datetime import datetime
 # App Name
 app_name = "Cloudflare DDNS"
 key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
-exe_path = os.path.abspath(__file__)
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, filename='ddns_updater.log', format='%(asctime)s - %(levelname)s - %(message)s')
@@ -82,17 +81,22 @@ class DDNSUpdater:
 
     def check_startup_entry_exists(self, option=False):
         self.check_admin()
+        exe_path = os.path.abspath(__file__)
         try:
             with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_WRITE) as key:
-                if self.config.start and not option:
+                if option:
+                    winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, exe_path)
+                elif self.config.start:
                     winreg.DeleteValue(key, app_name)
                     self.config.config["start"] = False
                     self.send_message("Startup Disable", False, True)
+                    cf.save_to_file(self.config.config)
                 else:
                     winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, exe_path)
                     self.config.config["start"] = True
                     self.send_message("Startup Enabled!", False, True)
-                cf.save_to_file(self.config.config)
+                    cf.save_to_file(self.config.config)
+
         except FileNotFoundError:
             with winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path) as key:
                 winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, exe_path)
