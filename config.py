@@ -23,13 +23,6 @@ prompts = {
     'auth_key': " ⃰ Auth Key:",
     'zone_identifier': " ⃰ Zone Identifier:",
     'record_name': " ⃰ Record Name:",
-    'ttl': "TTL (seconds):",
-    'proxy': "Enable Proxy (True/False):",
-    'check_interval': "Check Interval (seconds):",
-    'message': "Enable Messages (True/False):",
-    'silent': "Enable Silent Mode (True/False):",
-    'start': "Windows Startup (True/False):",
-    'auth_method': "Auth Method (token/basic):",
 }
 
 

@@ -1,3 +1,4 @@
+import argparse
 import ctypes
 import os
 import sys
@@ -60,8 +61,6 @@ class DDNSUpdater:
         tray_thread.daemon = True  # Allows the thread to exit when the main program exits
         tray_thread.start()
 
-        self.refresh_config()
-
     def system_tray(self):
         image = Image.open("cloudflare-icon.png")
         self.icon = pystray.Icon("DDNS", image, "Cloudflare DDNS", menu=pystray.Menu(
@@ -74,47 +73,54 @@ class DDNSUpdater:
         if str(query) == "Update DNS":
             self.manualChecking = True
         elif str(query) == "Window Startup":
-            self.check_startup_entry_exists()
+            self.check_startup_entry_exists(True)
         elif str(query) == "Exit":
             self.icon.stop()
             self.exit = True
 
     def check_startup_entry_exists(self, option=False):
-        self.check_admin()
-        exe_path = os.path.abspath(__file__)
+        if getattr(sys, 'frozen', False):
+            # If the application is run as a bundle, the path to the executable is stored in sys.executable
+            exe_path = os.path.dirname(sys.executable) + '\\main.py'
+        else:
+            # If the application is run as a script, the path to the script is stored in __file__
+            exe_path = os.path.dirname(os.path.abspath(__file__)) + '\\CloudflareDDNS.exe'
         try:
-            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_WRITE) as key:
-                if option:
-                    winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, exe_path)
-                elif self.config.start:
-                    winreg.DeleteValue(key, app_name)
-                    self.config.config["start"] = False
-                    self.send_message("Startup Disable", False, True)
-                    cf.save_to_file(self.config.config)
-                else:
-                    winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, exe_path)
-                    self.config.config["start"] = True
-                    self.send_message("Startup Enabled!", False, True)
-                    cf.save_to_file(self.config.config)
-
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ)
+            value, _ = winreg.QueryValueEx(key, app_name)
+            if option:
+                self.check_admin()
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_WRITE) as key:
+                    logging.info(self.config.start)
+                    if self.config.start:
+                        winreg.DeleteValue(key, app_name)
+                        self.config.start = False
+                        self.config.config["start"] = False
+                        self.send_message("Startup Disable", False, True)
+                        cf.save_to_file(self.config.config)
+                    else:
+                        winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, exe_path)
+                        self.config.start = True
+                        self.config.config["start"] = True
+                        self.send_message("Startup Enabled!", False, True)
+                        cf.save_to_file(self.config.config)
+                winreg.CloseKey(key)
         except FileNotFoundError:
-            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path) as key:
-                winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, exe_path)
-                cf.save_to_file(self.config.config)
-                self.send_message("Startup Enabled!", False, True)
+            if self.config.start or option:
+                self.check_admin()
+                with winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path) as key:
+                    winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, exe_path)
+                    cf.save_to_file(self.config.config)
+                    logging.info("Startup set to enabled")
         except Exception as e:
             if 'Access is denied' in str(e):
                 self.send_message("Please run the application as admin!", True)
-                time.sleep(3)
-                ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, " ".join(sys.argv), None, 1)
-                self.exit = True
-                return
             self.send_message(str(e), True)
+        self.config = Config()
 
     def refresh_config(self):
         self.config = Config()
-        if self.config.start:
-            self.check_startup_entry_exists(True)
+        self.check_startup_entry_exists()
 
     def get_dns_record(self):
         headers = {
@@ -165,13 +171,12 @@ class DDNSUpdater:
             notify_thread.start()
         else:
             logging.info(msg)
-            if self.config.message:
+            if self.config.message and not self.config.silent:
                 notify_thread.start()
 
     def check_time(self):
         time.sleep(1)
         diff = (datetime.now() - self.lastUpdate).total_seconds()
-        print(diff)
         if diff > self.config.check_interval:
             self.lastUpdate = datetime.now()
             return True
@@ -190,9 +195,9 @@ class DDNSUpdater:
                 None, "runas", sys.executable, " ".join(sys.argv), None, 1
             )
             self.exit = True
-            sys.exit()
 
     def run(self):
+        self.refresh_config()
         self.main()
         while not self.exit:
             if self.check_time() or self.manualChecking:
@@ -202,7 +207,6 @@ class DDNSUpdater:
 
     def main(self):
         self.manualChecking = False
-        self.refresh_config()
         ip = get_public_ip()
         if not ip:
             return
@@ -216,14 +220,14 @@ class DDNSUpdater:
 
         old_ip = record["result"][0]["content"]
         if ip == old_ip:
-            self.send_message(f"IP ({ip}) for {self.config.record_name} has not changed.", False)
+            self.send_message(f"IP ({ip}) for {self.config.record_name} has not changed.")
             return
 
         record_identifier = record["result"][0]["id"]
         update = self.update_dns_record(record_identifier, ip)
 
         if update and update.get("success", False):
-            self.send_message(f"{ip} {self.config.record_name} DDNS updated.", False)
+            self.send_message(f"{ip} {self.config.record_name} DDNS updated.")
         else:
             self.send_message(f"{ip} {self.config.record_name} DDNS failed for {record_identifier} ({ip}).", True)
         return
