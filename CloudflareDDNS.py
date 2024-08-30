@@ -1,4 +1,3 @@
-import argparse
 import ctypes
 import os
 import sys
@@ -81,7 +80,7 @@ class DDNSUpdater:
     def check_startup_entry_exists(self, option=False):
         if getattr(sys, 'frozen', False):
             # If the application is run as a bundle, the path to the executable is stored in sys.executable
-            exe_path = os.path.dirname(sys.executable) + '\\main.py'
+            exe_path = os.path.dirname(sys.executable) + '\\CloudflareDDNS.py'
         else:
             # If the application is run as a script, the path to the script is stored in __file__
             exe_path = os.path.dirname(os.path.abspath(__file__)) + '\\CloudflareDDNS.exe'
@@ -161,7 +160,9 @@ class DDNSUpdater:
         print(msg)
         notify.message = str(msg)
         notify_thread = threading.Thread(target=lambda: notify.send(block=False))
-
+        if self.manualChecking:
+            notification = True
+            self.manualChecking = False
         if error:
             logging.error(msg)
             if not self.config.silent:
@@ -206,7 +207,6 @@ class DDNSUpdater:
                 continue
 
     def main(self):
-        self.manualChecking = False
         ip = get_public_ip()
         if not ip:
             return
@@ -230,7 +230,6 @@ class DDNSUpdater:
             self.send_message(f"{ip} {self.config.record_name} DDNS updated.")
         else:
             self.send_message(f"{ip} {self.config.record_name} DDNS failed for {record_identifier} ({ip}).", True)
-        return
 
 
 if __name__ == "__main__":
