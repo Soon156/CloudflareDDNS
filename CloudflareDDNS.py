@@ -80,10 +80,10 @@ class DDNSUpdater:
     def check_startup_entry_exists(self, option=False):
         if getattr(sys, 'frozen', False):
             # If the application is run as a bundle, the path to the executable is stored in sys.executable
-            exe_path = os.path.dirname(sys.executable) + '\\CloudflareDDNS.py'
+            exe_path = os.path.dirname(sys.executable) + '\\CloudflareDDNS.exe'
         else:
             # If the application is run as a script, the path to the script is stored in __file__
-            exe_path = os.path.dirname(os.path.abspath(__file__)) + '\\CloudflareDDNS.exe'
+            exe_path = os.path.dirname(os.path.abspath(__file__)) + '\\CloudflareDDNS.py'
         try:
             key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ)
             value, _ = winreg.QueryValueEx(key, app_name)
