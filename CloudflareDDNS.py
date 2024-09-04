@@ -1,5 +1,4 @@
 import ctypes
-import os
 import sys
 import threading
 import winreg
@@ -10,6 +9,7 @@ import time
 
 import config as cf
 from config import Config
+from config import folder_path
 from notifypy import Notify
 from PIL import Image
 import pystray
@@ -20,12 +20,16 @@ app_name = "Cloudflare DDNS"
 key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
 # Set up logging
-logging.basicConfig(level=logging.INFO, filename='ddns_updater.log', format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, filename=folder_path + '\\ddns_updater.log',
+                    format='%(asctime)s - %(levelname)s - %(message)s')
+
+logging.info("Folder-path: " + folder_path)
 
 notify = Notify(
     default_notification_title="DDNS Updater",
-    default_application_name="Cloudflare DDNS",
-    default_notification_icon="cloudflare-icon.png"
+    default_application_name=app_name,
+    default_notification_icon=folder_path + "\\cloudflare-icon.png",
+    default_notification_application_name=app_name
 )
 
 
@@ -51,7 +55,7 @@ class DDNSUpdater:
     def __init__(self):
         self.manualChecking = False
         self.lastUpdate = datetime.now()
-        self.config = None
+        self.config = Config()
         self.exit = False
         self.icon = None
 
@@ -61,7 +65,7 @@ class DDNSUpdater:
         tray_thread.start()
 
     def system_tray(self):
-        image = Image.open("cloudflare-icon.png")
+        image = Image.open(folder_path + "\\cloudflare-icon.png")
         self.icon = pystray.Icon("DDNS", image, "Cloudflare DDNS", menu=pystray.Menu(
             pystray.MenuItem("Update DNS", self.after_click),
             pystray.MenuItem("Window Startup", self.after_click),
@@ -72,54 +76,50 @@ class DDNSUpdater:
         if str(query) == "Update DNS":
             self.manualChecking = True
         elif str(query) == "Window Startup":
+            print("Click!")
             self.check_startup_entry_exists(True)
         elif str(query) == "Exit":
             self.icon.stop()
             self.exit = True
 
     def check_startup_entry_exists(self, option=False):
-        if getattr(sys, 'frozen', False):
-            # If the application is run as a bundle, the path to the executable is stored in sys.executable
-            exe_path = os.path.dirname(sys.executable) + '\\CloudflareDDNS.exe'
-        else:
-            # If the application is run as a script, the path to the script is stored in __file__
-            exe_path = os.path.dirname(os.path.abspath(__file__)) + '\\CloudflareDDNS.py'
+        exe_path = folder_path + '\\CloudflareDDNS.exe'
         try:
             key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ)
             value, _ = winreg.QueryValueEx(key, app_name)
             if option:
                 self.check_admin()
                 with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_WRITE) as key:
-                    logging.info(self.config.start)
+                    logging.info("Startup: " + str(self.config.start))
                     if self.config.start:
                         winreg.DeleteValue(key, app_name)
                         self.config.start = False
                         self.config.config["start"] = False
                         self.send_message("Startup Disable", False, True)
-                        cf.save_to_file(self.config.config)
                     else:
                         winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, exe_path)
                         self.config.start = True
                         self.config.config["start"] = True
                         self.send_message("Startup Enabled!", False, True)
-                        cf.save_to_file(self.config.config)
+                    cf.save_to_file(self.config.config)
                 winreg.CloseKey(key)
         except FileNotFoundError:
             if self.config.start or option:
                 self.check_admin()
                 with winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path) as key:
                     winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, exe_path)
+                    self.config.start = True
+                    self.config.config["start"] = True
                     cf.save_to_file(self.config.config)
-                    logging.info("Startup set to enabled")
+                    if option:
+                        self.send_message("Startup Enabled!", True)
+                    else:
+                        logging.info("Startup set to enabled")
         except Exception as e:
             if 'Access is denied' in str(e):
                 self.send_message("Please run the application as admin!", True)
             self.send_message(str(e), True)
-        self.config = Config()
-
-    def refresh_config(self):
-        self.config = Config()
-        self.check_startup_entry_exists()
+        self.config.load_config()
 
     def get_dns_record(self):
         headers = {
@@ -163,16 +163,19 @@ class DDNSUpdater:
         if self.manualChecking:
             notification = True
             self.manualChecking = False
-        if error:
-            logging.error(msg)
-            if not self.config.silent:
+
+        # Handle when self.config.silent is True
+        if self.config.silent:
+            if error:
+                logging.error(msg)
                 notify_thread.start()
-        elif notification:
-            logging.info(msg)
-            notify_thread.start()
+            elif notification:
+                logging.info(msg)
+                notify_thread.start()
         else:
+            # Handle when self.config.silent is False
             logging.info(msg)
-            if self.config.message and not self.config.silent:
+            if self.config.message or error or notification:
                 notify_thread.start()
 
     def check_time(self):
@@ -198,7 +201,6 @@ class DDNSUpdater:
             self.exit = True
 
     def run(self):
-        self.refresh_config()
         self.main()
         while not self.exit:
             if self.check_time() or self.manualChecking:
@@ -207,6 +209,7 @@ class DDNSUpdater:
                 continue
 
     def main(self):
+        self.check_startup_entry_exists()
         ip = get_public_ip()
         if not ip:
             return

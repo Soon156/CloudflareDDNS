@@ -1,8 +1,11 @@
 import json
+import os
 import sys
 import tkinter as tk
 import logging
 from tkinter import messagebox
+
+folder_path = os.path.dirname(os.path.abspath(__file__))
 
 defaults = {
     'start': False,
@@ -27,12 +30,12 @@ prompts = {
 
 
 def save_to_file(user_data):
-    with open('config.json', 'w') as file:
+    with open(folder_path + '\\config.json', 'w') as file:
         json.dump(user_data, file, indent=4)
 
 
 class Config:
-    def __init__(self, config_file='config.json'):
+    def __init__(self, config_file=folder_path + '\\config.json'):
         self.required_fields = ['auth_email', 'auth_key', 'zone_identifier', 'record_name']
         self.config_file = config_file
         self.dialog = None
@@ -106,7 +109,7 @@ class Config:
         self.dialog.resizable(False, False)
 
         try:
-            self.dialog.iconphoto(True, tk.PhotoImage(file="cloudflare-icon.png"))
+            self.dialog.iconphoto(True, tk.PhotoImage(file=folder_path + "\\cloudflare-icon.png"))
         except tk.TclError:
             logging.warning("Icon file not found. Proceeding without icon.")
 
