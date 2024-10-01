@@ -1,7 +1,3 @@
-The script, **Cloudflare DDNS Updater**, automates the process of updating DNS records for a domain managed by Cloudflare, ensuring that the DNS always points to the correct public IP address. Here's a summary for the README:
-
----
-
 # Cloudflare DDNS Updater
 
 This Python script automates the management of Dynamic DNS (DDNS) records for a domain hosted on Cloudflare. It periodically checks the public IP address of your machine and updates the DNS record if the IP has changed, ensuring that your domain always points to your current IP.
