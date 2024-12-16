@@ -121,40 +121,64 @@ class DDNSUpdater:
             self.send_message(str(e), True)
         self.config.load_config()
 
-    def get_dns_record(self):
-        headers = {
-            "X-Auth-Email": self.config.auth_email,
-            "Authorization": f"Bearer {self.config.auth_key}" if self.config.auth_method == "token" else f"X-Auth-Key: {self.config.auth_key}",
-            "Content-Type": "application/json"
-        }
-        url = f"https://api.cloudflare.com/client/v4/zones/{self.config.zone_identifier}/dns_records?type=A&name={self.config.record_name}"
-        try:
-            response = requests.get(url, headers=headers)
-            return response.json() if response.status_code == 200 else None
-        except requests.RequestException as e:
-            logging.error(f"Failed to get DNS record: {e}")
-            return None
+    def get_dns_record(self, ip):
+        for account in self.config.accounts:
+            headers = {
+                "X-Auth-Email": account["auth_email"],
+                "Authorization": f"Bearer {account['auth_key']}" if account['auth_method'] == "token" else f"X-Auth-Key: {account['auth_key']}",
+                "Content-Type": "application/json"
+            }
+            url = f"https://api.cloudflare.com/client/v4/zones/{account['zone_identifier']}/dns_records?type=A&name={account['record_name']}"
+            logging.debug(url)
+            logging.debug(headers)
+
+            try:
+                response = requests.get(url, headers=headers).json()
+
+                if not response or response.get("result_info", {}).get("count", 0) == 0:
+                    self.send_message(
+                        f"Record does not exist, perhaps create one first? ({ip} for {account['record_name']})", True)
+                    continue
+
+                old_ip = response["result"][0]["content"]
+                if ip == old_ip:
+                    self.send_message(f"IP ({ip}) for {account['record_name']} has not changed.")
+                    continue
+
+                record_identifier = response["result"][0]["id"]
+                self.update_dns_record(record_identifier, ip)
+
+            except requests.RequestException as e:
+                logging.error(f"Failed to get DNS record: {e}")
 
     def update_dns_record(self, record_identifier, ip):
-        headers = {
-            "X-Auth-Email": self.config.auth_email,
-            "Authorization": f"Bearer {self.config.auth_key}" if self.config.auth_method == "token" else f"X-Auth-Key: {self.config.auth_key}",
-            "Content-Type": "application/json"
-        }
-        url = f"https://api.cloudflare.com/client/v4/zones/{self.config.zone_identifier}/dns_records/{record_identifier}"
-        data = {
-            "type": "A",
-            "name": self.config.record_name,
-            "content": ip,
-            "ttl": self.config.ttl,
-            "proxied": self.config.proxy
-        }
-        try:
-            response = requests.patch(url, json=data, headers=headers)
-            return response.json() if response.status_code == 200 else None
-        except requests.RequestException as e:
-            logging.error(f"Failed to update DNS record: {e}")
-            return None
+        for account in self.config.accounts:
+            headers = {
+                "X-Auth-Email": account.auth_email,
+                "Authorization": f"Bearer {account['auth_key']}" if account['auth_method'] == "token" else f"X-Auth-Key: {account['auth_key']}",
+                "Content-Type": "application/json"
+            }
+            url = f"https://api.cloudflare.com/client/v4/zones/{account['zone_identifier']}/dns_records/{record_identifier}"
+            data = {
+                "type": "A",
+                "name": account['record_name'],
+                "content": ip,
+                "ttl": account['ttl'],
+                "proxied": account['proxy']
+            }
+            logging.debug(url)
+            logging.debug(headers)
+            logging.debug(data)
+            try:
+                response = requests.patch(url, json=data, headers=headers).json()
+                if response and response.get("success", False):
+                    self.send_message(f"{ip} {account['record_name']} DDNS updated.")
+                else:
+                    self.send_message(f"{ip} {account['record_name']} DDNS failed for {record_identifier} ({ip}).", True)
+            except requests.RequestException as e:
+                logging.error(f"Failed to update DNS record: {e}")
+
+
 
     def send_message(self, msg, error=False, notification=False):
         print(msg)
@@ -214,25 +238,7 @@ class DDNSUpdater:
         if not ip:
             return
         logging.info("Check Initiated")
-        record = self.get_dns_record()
-
-        if not record or record.get("result_info", {}).get("count", 0) == 0:
-            self.send_message(
-                f"Record does not exist, perhaps create one first? ({ip} for {self.config.record_name})", True)
-            return
-
-        old_ip = record["result"][0]["content"]
-        if ip == old_ip:
-            self.send_message(f"IP ({ip}) for {self.config.record_name} has not changed.")
-            return
-
-        record_identifier = record["result"][0]["id"]
-        update = self.update_dns_record(record_identifier, ip)
-
-        if update and update.get("success", False):
-            self.send_message(f"{ip} {self.config.record_name} DDNS updated.")
-        else:
-            self.send_message(f"{ip} {self.config.record_name} DDNS failed for {record_identifier} ({ip}).", True)
+        self.get_dns_record(ip)
 
 
 if __name__ == "__main__":

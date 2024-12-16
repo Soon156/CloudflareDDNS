@@ -12,6 +12,7 @@ defaults = {
     'silent': True,
     'message': True,
     'check_interval': 600,
+    'accounts': [{
     'proxy': False,
     'ttl': 600,
     'record_name': "",
@@ -19,6 +20,7 @@ defaults = {
     'auth_key': "",
     'auth_method': "token",
     'auth_email': "",
+    }]
 }
 
 prompts = {
@@ -44,22 +46,17 @@ class Config:
         self.halt = False
         self.load_config()
 
+        configuration = self.config["accounts"][0]
         for key in self.required_fields:
-            if self.config[key] == "" or self.config[key] is None:
+            if not configuration or configuration[key] == "" or configuration[key] is None:
                 self.custom_dialog(prompts[key], key)
-                self.config[key] = self.user_data[key]
+                self.config["accounts"][0][key] = self.user_data["accounts"][0][key]
 
         self.start = self.config["start"]
         self.silent = self.config["silent"]
         self.message = self.config["message"]
         self.check_interval = self.config["check_interval"]
-        self.proxy = self.config["proxy"]
-        self.ttl = self.config["ttl"]
-        self.record_name = self.config["record_name"]
-        self.zone_identifier = self.config["zone_identifier"]
-        self.auth_key = self.config["auth_key"]
-        self.auth_method = self.config["auth_method"]
-        self.auth_email = self.config["auth_email"]
+        self.accounts = self.config["accounts"]
 
     def load_config(self):
         """Load the configuration from the JSON file."""
@@ -68,6 +65,7 @@ class Config:
                 self.config = json.load(file)
         except Exception as e:
             logging.info("Configuration file not found.")
+            self.user_data = defaults
             self.get_user_input()
             return
 
@@ -137,7 +135,7 @@ class Config:
         if not value and key in self.required_fields:
             messagebox.showwarning("Missing Fields", "This field is required!")
         else:
-            self.user_data[key] = value
+            self.user_data["accounts"][0][key] = value
             self.dialog.destroy()
 
     def on_close(self):
