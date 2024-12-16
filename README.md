@@ -29,17 +29,26 @@ The script uses a configuration file that defines various settings for its opera
 
 ```javascript
 {
-    "auth_email": "",
-    "auth_key": "",
-    "zone_identifier": "",
-    "record_name": "",
     "start": true,
     "silent": true,
     "message": true,
     "check_interval": 600,
-    "proxy": false,
-    "ttl": 600,
-    "auth_method": "token"
+    "accounts": [
+        {
+            "proxy": false,
+            "ttl": 600,
+            "record_name": "yourdomain.com",
+            "zone_identifier": "zone_id_here",
+            "auth_key": "apou_auth_key",
+            "auth_method": "token",
+            "auth_email": "soonkokseng2015@gmail.com"
+        },
+        {
+            "proxy": false,
+            "ttl": 600,
+            ...
+        }
+    ]
 }
 ```
 
