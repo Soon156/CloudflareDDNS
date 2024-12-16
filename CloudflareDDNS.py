@@ -20,7 +20,7 @@ app_name = "Cloudflare DDNS"
 key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
 # Set up logging
-logging.basicConfig(level=logging.INFO, filename=folder_path + '\\ddns_updater.log',
+logging.basicConfig(level=logging.DEBUG, filename=folder_path + '\\ddns_updater.log',
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
 logging.info("Folder-path: " + folder_path)
@@ -76,7 +76,6 @@ class DDNSUpdater:
         if str(query) == "Update DNS":
             self.manualChecking = True
         elif str(query) == "Window Startup":
-            print("Click!")
             self.check_startup_entry_exists(True)
         elif str(query) == "Exit":
             self.icon.stop()
@@ -134,6 +133,7 @@ class DDNSUpdater:
 
             try:
                 response = requests.get(url, headers=headers).json()
+                logging.debug(response)
 
                 if not response or response.get("result_info", {}).get("count", 0) == 0:
                     self.send_message(
@@ -146,13 +146,14 @@ class DDNSUpdater:
                     continue
 
                 record_identifier = response["result"][0]["id"]
-                self.update_dns_record(record_identifier, ip)
+                self.update_dns_record(account, record_identifier, ip)
 
             except requests.RequestException as e:
                 logging.error(f"Failed to get DNS record: {e}")
 
-    def update_dns_record(self, record_identifier, ip):
-        for account in self.config.accounts:
+            time.sleep(500)
+
+    def update_dns_record(self, account, record_identifier, ip):
             headers = {
                 "X-Auth-Email": account.auth_email,
                 "Authorization": f"Bearer {account['auth_key']}" if account['auth_method'] == "token" else f"X-Auth-Key: {account['auth_key']}",
@@ -171,6 +172,7 @@ class DDNSUpdater:
             logging.debug(data)
             try:
                 response = requests.patch(url, json=data, headers=headers).json()
+                logging.debug(response)
                 if response and response.get("success", False):
                     self.send_message(f"{ip} {account['record_name']} DDNS updated.")
                 else:
@@ -178,27 +180,21 @@ class DDNSUpdater:
             except requests.RequestException as e:
                 logging.error(f"Failed to update DNS record: {e}")
 
-
-
     def send_message(self, msg, error=False, notification=False):
-        print(msg)
         notify.message = str(msg)
         notify_thread = threading.Thread(target=lambda: notify.send(block=False))
         if self.manualChecking:
             notification = True
             self.manualChecking = False
-
+        logging.debug(msg)
         # Handle when self.config.silent is True
         if self.config.silent:
             if error:
-                logging.error(msg)
                 notify_thread.start()
             elif notification:
-                logging.info(msg)
                 notify_thread.start()
         else:
             # Handle when self.config.silent is False
-            logging.info(msg)
             if self.config.message or error or notification:
                 notify_thread.start()
 
