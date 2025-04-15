@@ -2,7 +2,10 @@ FROM python:3.9-slim
 
 WORKDIR /app
 
-# Install dependencies
+# Set pip and setuptools versions
+RUN pip install --no-cache-dir --upgrade pip>=23.3.1 setuptools>=70.0.0
+
+# Install app dependencies
 RUN pip install --no-cache-dir requests
 
 # Copy application file
