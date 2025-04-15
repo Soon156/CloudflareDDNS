@@ -1,99 +1,112 @@
-# Cloudflare DDNS Updater
+# Cloudflare DDNS Docker
 
-This Python script automates the management of Dynamic DNS (DDNS) records for a domain hosted on Cloudflare. It periodically checks the public IP address of your machine and updates the DNS record if the IP has changed, ensuring that your domain always points to your current IP.
+A lightweight Docker container that automatically updates Cloudflare DNS records with your current public IP address.
 
-## Key Features:
-- **Automatic IP Detection:** Retrieves the current public IP address using multiple services.
-- **DNS Record Management:** Checks and updates the DNS `A` record for your domain using the Cloudflare API.
-- **System Tray Integration:** A system tray icon allows manual updates, toggling startup behavior, and exiting the application.
-- **Windows Startup:** Optionally configures the application to run at system startup.
-- **Notifications:** Provides notifications for successful updates, errors, and other events.
+## Features
 
-## Requirements:
-- Python 3.x
-- Required Python packages: `requests`, `pystray`, `notifypy`, `Pillow`
-- Detailed in `requirements.txt`
+- Automatically updates Cloudflare DNS A records with your public IP
+- Containerized for easy deployment and management
+- Simple configuration using environment variables
+- Checks public IP at configurable intervals
+- Supports both Cloudflare API tokens and Global API keys
+- Creates DNS records if they don't exist
+- Detailed logging
 
-## Usage:
-1. **Configuration:** Ensure that the `config.py` file contains the necessary Cloudflare API credentials and other configurations.
-2. **Running the Script:** Execute the script to start monitoring and updating your DNS records automatically.
-3. **System Tray:** Use the tray icon to manually trigger an update, enable/disable startup, or exit the application.
+## Prerequisites
 
-This tool is especially useful for users with a dynamic IP who need to keep their domain pointing to the correct address without manual intervention.
+- Docker installed on your host system
+- Cloudflare account with a domain
+- Cloudflare API token or Global API key
+- Cloudflare Zone ID for your domain
 
----
+## Quick Start
+
+1. Create a `docker-compose.yml` file:
+
+```yaml
+version: '3'
+services:
+  app:
+    image: fawefs156/cloudflare-ddns:latest
+    container_name: cloudflare-ddns # change this base on your preference
+    environment:
+      - CHECK_INTERVAL=300 # Update interval in seconds
+      - CF_EMAIL=your-email@example.com
+      - CF_TOKEN=your-api-token # Use either CF_TOKEN or CF_KEY
+      # - CF_KEY=your-global-api-key
+      - CF_ZONE_ID=your-zone-id
+      - CF_RECORD_NAME=your-domain.com
+      - CF_TTL=1
+      - CF_PROXIED=false
+
+    restart: unless-stopped
+```
+
+2. Start the container:
+
+```bash
+docker-compose up -d
+```
+### Using Docker Command
+
+```bash
+# Run the container
+docker run -d \
+  --name cloudflare-ddns \
+  --restart unless-stopped \
+  -e CHECK_INTERVAL=300 \
+  -e CF_EMAIL=your-email@example.com \
+  -e CF_TOKEN=your-api-token \
+  -e CF_ZONE_ID=your-zone-id \
+  -e CF_RECORD_NAME=your-domain.com \
+  -e CF_TTL=1 \
+  -e CF_PROXIED=false \
+  cloudflare-ddns
+```
 
 ## Configuration
 
-The script uses a configuration file that defines various settings for its operation. Below is an overview of the configuration options:
+Configure the container using the following environment variables:
 
-```javascript
-{
-    "start": true,
-    "silent": true,
-    "message": true,
-    "check_interval": 600,
-    "accounts": [
-        {
-            "proxy": false,
-            "ttl": 600,
-            "record_name": "yourdomain.com",
-            "zone_identifier": "zone_id_here",
-            "auth_key": "apou_auth_key",
-            "auth_method": "token",
-            "auth_email": "soonkokseng2015@gmail.com"
-        },
-        {
-            "proxy": false,
-            "ttl": 600,
-            ...
-        }
-    ]
-}
+| Variable | Required | Description | Example |
+|----------|----------|-------------|---------|
+| `CHECK_INTERVAL` | No | Time in seconds between IP checks (default: 300) | `300` |
+| `CF_EMAIL` | Yes | Your Cloudflare account email | `user@example.com` |
+| `CF_TOKEN` | Yes* | Your Cloudflare API token | `Abc123Xyz789...` |
+| `CF_KEY` | Yes* | Alternative to CF_TOKEN: Your Cloudflare Global API key | `global-api-key` |
+| `CF_ZONE_ID` | Yes | Zone ID for your domain (found in Cloudflare dashboard) | `abc123def456...` |
+| `CF_RECORD_NAME` | Yes | The domain/subdomain to update | `ddns.example.com` |
+| `CF_TTL` | No | TTL value for DNS record (default: 1 - automatic) | `1` |
+| `CF_PROXIED` | No | Whether to proxy through Cloudflare (default: false) | `false` |
+
+*You must provide either `CF_TOKEN` (recommended) or `CF_KEY`
+
+## Security Recommendations
+
+For enhanced security, use a Cloudflare API token instead of a Global API key. You can create a token with limited permissions:
+
+1. Go to Cloudflare dashboard → My Profile → API Tokens
+2. Click "Create Token"
+3. Use "Edit zone DNS" template or create a custom token with:
+   - Zone:DNS:Edit permissions
+   - Include only the specific zone you want to update
+
+## Logs and Monitoring
+
+View logs with:
+
+```bash
+docker logs -f cloudflare-ddns
 ```
 
-### Configuration Options:
+## Troubleshooting
 
-- **`auth_email`** (`str`):
-  - **Description**: The email address associated with the Cloudflare account (required when using the global API key).
-  - **Default**: `""` (Empty string, must be set by the user if using a global API key).
+Common issues:
+- "API Error: Authentication error": Check your CF_EMAIL and CF_TOKEN/CF_KEY
+- "Missing required configuration": Ensure all required environment variables are set
+- "Record does not exist": The script will attempt to create the record
+- "Failed to find a valid IP": Network issue, check container's internet connectivity
 
-- **`auth_key`** (`str`):
-  - **Description**: The API token or global API key used for authentication with Cloudflare.
-  - **Default**: `""` (Empty string, must be set by the user).
+## License
 
-- **`zone_identifier`** (`str`):
-  - **Description**: The Cloudflare Zone ID associated with the domain.
-  - **Default**: `""` (Empty string, must be set by the user).
-
-- **`record_name`** (`str`):
-  - **Description**: The DNS record name that should be updated (e.g., `subdomain.example.com`).
-  - **Default**: `""` (Empty string, must be set by the user).
-
-- **`start`** (`bool`):
-  - **Description**: Determines if the script should automatically run at Windows startup.
-  - **Default**: `False` (The script will not start automatically unless changed to `True`).
-
-- **`silent`** (`bool`):
-  - **Description**: Controls whether the script runs in silent mode. When enabled, notifications are minimized, showing only critical messages such as errors.
-  - **Default**: `True` (Silent mode is enabled by default).
-
-- **`message`** (`bool`):
-  - **Description**: Specifies whether informational messages should be displayed as notifications.
-  - **Default**: `True` (Notifications for messages are enabled).
-
-- **`check_interval`** (`int`):
-  - **Description**: Defines the time interval (in seconds) between IP address checks.
-  - **Default**: `600` (The IP is checked every 10 minutes).
-
-- **`proxy`** (`bool`):
-  - **Description**: Indicates whether to enable Cloudflare's proxy service for the DNS record.
-  - **Default**: `False` (Proxy is disabled by default).
-
-- **`ttl`** (`int`):
-  - **Description**: Sets the TTL (Time-To-Live) for the DNS record, in seconds.
-  - **Default**: `600` (The DNS record TTL is set to 10 minutes).
-
-- **`auth_method`** (`str`):
-  - **Description**: The method of authentication, either `"token"` for API token or `"key"` for global API key.
-  - **Default**: `"token"` (Uses API token for authentication by default).
+This project is licensed under the MIT License
