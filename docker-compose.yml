@@ -1,0 +1,15 @@
+services:
+  cloudflare-ddns:
+    build: .
+    container_name: cloudflare-ddns
+    environment:
+      - CHECK_INTERVAL=300 # Update interval in seconds
+      - CF_EMAIL=your-email@example.com
+      - CF_TOKEN=your-api-token # Use either CF_TOKEN or CF_KEY
+      # - CF_KEY=your-global-api-key
+      - CF_ZONE_ID=your-zone-id
+      - CF_RECORD_NAME=your-domain.com
+      - CF_TTL=1
+      - CF_PROXIED=false
+
+    restart: unless-stopped
